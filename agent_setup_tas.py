@@ -1,13 +1,18 @@
 # agent_setup_tas.py
 # This file configures the LangChain agent that provides structured answers about
-# Tasmanian import requirements. It combines:
-# 1. A zero-shot agent that can reason about import requirements
-# 2. The tas_manual_tool for looking up specific requirements
-# 3. A structured prompt that ensures consistent, well-formatted responses
+# Tasmanian fruit fly import requirements. It focuses specifically on:
+# 1. Fruit fly host identification
+# 2. State-specific pest presence assessment
+# 3. ICA condition requirements
 
+import os
+from dotenv import load_dotenv
 from langchain.agents import initialize_agent, AgentType
-from langchain_openai import ChatOpenAI
-from tas_tools import tas_manual_tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from tas_tools import fruit_fly_tool
+
+# Load environment variables
+load_dotenv()
 
 # Generic footer that must be appended to all responses
 # This ensures users are always reminded of the baseline requirements
@@ -20,11 +25,15 @@ GENERIC_TAS_FOOTER = (
 
 # Initialize the agent with specific configuration
 agent = initialize_agent(
-    # The tas_manual_tool provides access to the structured database and semantic search
-    tools=[tas_manual_tool],
+    # The fruit_fly_tool provides access to the fruit fly database and assessment
+    tools=[fruit_fly_tool],
     
-    # Use a zero-temperature model for consistent, factual responses
-    llm=ChatOpenAI(temperature=0),
+    # Use Gemini Pro for consistent, factual responses
+    llm=ChatGoogleGenerativeAI(
+        model="gemini-1.5-pro",
+        temperature=0,
+        convert_system_message_to_human=True  # Gemini doesn't support system messages directly
+    ),
     
     # Use the ZERO_SHOT_REACT_DESCRIPTION agent type
     # This allows the agent to:
@@ -39,26 +48,41 @@ agent = initialize_agent(
     # Configure the agent's behavior with a detailed prompt
     agent_kwargs={
         "prefix": (
-            "You are PlantPassport.ai, a regulatory assistant for **Tasmania only**.\n"
-            "When a user asks about bringing a commodity into Tasmania, follow these steps exactly:\n"
-            "1. Identify the commodity and its type (fruit, plant, seed, etc.).\n"
-            "2. Call `tas_manual_lookup` with that commodity.\n"
-            "3. Structure your response as follows:\n"
-            "   a. Commodity Type: [fruit/plant/seed/etc.]\n"
-            "   b. Import Requirements:\n"
-            "      - List each IR number with its full title\n"
-            "      - For each IR, cite the specific section and page number\n"
-            "      - Detail any applicable ICAs with their status\n"
-            "   c. Pest Considerations:\n"
-            "      - List relevant pests from Table 1\n"
-            "      - Note any state-specific pest presence\n"
-            "   d. Additional Requirements:\n"
-            "      - Any special conditions (e.g., phylloxera zones)\n"
-            "      - Treatment requirements if specified\n"
-            "4. Always append the generic pre-entry reminder in full.\n"
-            "5. If the commodity isn't listed, explicitly state this and still give the generic footer.\n\n"
-            "Use clear formatting with bullet points and section headers. "
-            "Never invent requirements - only cite what's explicitly in the Tasmanian PQM."
+            "You are PlantPassport.ai, a regulatory assistant for **Tasmania fruit fly conditions only**.\n\n"
+            "**STRUCTURED APPROACH**: Always analyze queries using these 3 key variables:\n"
+            "1. **COMMODITY**: Identify the specific commodity (e.g., 'table grapes', 'apples', 'citrus')\n"
+            "2. **DESTINATION**: Always Tasmania (this is fixed for this system)\n"
+            "3. **ORIGIN**: The state/territory of origin (e.g., 'NSW', 'Victoria', 'WA') - this is CRITICAL for fruit fly assessment\n\n"
+            "**FRUIT FLY ASSESSMENT PROCESS**:\n"
+            "1. Extract the commodity and origin state from the user query\n"
+            "2. **FIRST**: Check if the commodity is a fruit fly host (QFF or MFF)\n"
+            "3. **THEN**: Check if the origin state has the relevant fruit fly present\n"
+            "4. **FINALLY**: Determine appropriate ICA conditions and treatment requirements\n\n"
+            "**RESPONSE FORMAT**:\n"
+            "**Commodity**: [Commodity Name]\n"
+            "**Origin**: [State/Territory]\n"
+            "**Destination**: Tasmania\n\n"
+            "**Fruit Fly Host Status**:\n"
+            "• QFF host: YES/NO\n"
+            "• MFF host: YES/NO\n\n"
+            "**Risk Assessment**:\n"
+            "• [Risk details or 'No risk detected']\n\n"
+            "**Required ICA Conditions**:\n"
+            "• [List applicable ICAs and conditions]\n\n"
+            "**Treatment Requirements**:\n"
+            "• [List treatment options]\n\n"
+            "**Documentation Required**:\n"
+            "• [List required certificates and paperwork]\n\n"
+            "**⚠️ Pre-entry Requirements**:\n"
+            "[Always include the generic footer]\n\n"
+            "**IMPORTANT DECISION RULES**:\n"
+            "- Origin state is CRITICAL - different states have different fruit fly profiles\n"
+            "- QFF is present in QLD, NSW, VIC, NT, and parts of SA\n"
+            "- MFF is present in WA and parts of SA\n"
+            "- Tasmania is free from both fruit flies\n"
+            "- If origin information is missing, ask for clarification\n"
+            "- Use clear formatting with bullet points and section headers\n"
+            "- Always call the fruit_fly_assessment tool with both commodity and origin state"
         )
     }
 )
@@ -66,4 +90,4 @@ agent = initialize_agent(
 # Example usage
 if __name__ == '__main__':
     # Test the agent with a sample query - edit the line below to test different queries
-    print(agent.invoke({"input": "What conditions do I need to meet to bring potatoes from Victoria into Tasmania?"}))
+    print(agent.invoke({"input": "I want to bring strawberry fruit from QLD into Tasmania."}))

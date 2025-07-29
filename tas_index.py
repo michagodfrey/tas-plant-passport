@@ -1,6 +1,7 @@
 # tas_index.py
 # This file creates a searchable index of the Tasmanian Plant Quarantine Manual (PQM)
 # It uses OpenAI embeddings to convert text into vectors that can be semantically searched
+# Note: We use OpenAI embeddings because Gemini doesn't provide embedding capabilities
 
 import os
 from dotenv import load_dotenv
@@ -11,7 +12,7 @@ from langchain_community.vectorstores import FAISS
 import re
 from langchain_core.documents import Document
 
-# Load environment variables (including OPENAI_API_KEY)
+# Load environment variables (including OPENAI_API_KEY for embeddings)
 load_dotenv()
 
 # Path to the local PDF file
@@ -65,7 +66,8 @@ try:
             ))
 
     # Create embeddings using OpenAI's embedding model
-    # This converts text into vectors that capture semantic meaning
+    # Note: We use OpenAI embeddings because Gemini doesn't provide embedding capabilities
+    # This is a hybrid approach: OpenAI for embeddings, Gemini for text generation
     embeddings = OpenAIEmbeddings()
 
     # Create a vector store using FAISS (Facebook AI Similarity Search)

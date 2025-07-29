@@ -1,196 +1,388 @@
 # tas_tools.py
-# This file creates a LangChain Tool that provides structured answers about Tasmanian import requirements
-# It combines structured data (from tas_data.py) with semantic search (from tas_index.py) to provide
-# accurate and detailed responses about plant quarantine requirements
+# This file creates a LangChain Tool that provides structured answers about Tasmanian fruit fly import requirements
+# It uses the simplified fruit fly database to assess risk and provide ICA conditions
 
-from langchain.chains import RetrievalQA
-from langchain_openai import ChatOpenAI
-from tas_index import retriever_tas
 from langchain.agents import Tool
-from tas_data import commodity_db, CommodityType
-from typing import Set, Optional
+from tas_data import fruit_fly_db
+from typing import Optional
 
-# Create a RetrievalQA chain that combines:
-# 1. The FAISS retriever from tas_index.py (for semantic search)
-# 2. A ChatOpenAI model (for generating answers)
-# 3. Source document tracking (for citations)
-qa_chain_tas = RetrievalQA.from_chain_type(
-    llm=ChatOpenAI(temperature=0),  # Use 0 temperature for consistent, factual responses
-    retriever=retriever_tas,        # Use the FAISS retriever from tas_index.py
-    return_source_documents=True    # Track which parts of the manual were used
-)
+def _normalize_commodity_name(commodity_name: str) -> str:
+    """
+    Normalize commodity names to handle plurals and common variations.
+    This converts common plural forms to singular to match the database.
+    """
+    name = commodity_name.lower().strip()
+    
+    # Common plural to singular mappings
+    plural_to_singular = {
+        # Fruits
+        "apples": "apple",
+        "grapes": "grape", 
+        "strawberries": "strawberry",
+        "bananas": "banana",
+        "oranges": "sweet orange",  # Most common orange type
+        "lemons": "lemon",
+        "limes": "lime",
+        "peaches": "peach",
+        "nectarines": "nectarine",
+        "plums": "plum",
+        "cherries": "sweet cherry",
+        "apricots": "apricot",
+        "pears": "pear",
+        "mangoes": "mango",
+        "mangos": "mango",
+        "avocados": "avocado",
+        "tomatoes": "tomato",
+        "capsicums": "capsicum",
+        "chillies": "chilli",
+        "chilis": "chilli",
+        "papayas": "papaya",
+        "guavas": "guava",
+        "lychees": "lychee",
+        "longans": "longan",
+        "rambutans": "rambutan",
+        "passionfruits": "passionfruit",
+        "dragonfruits": "dragon fruit",
+        "dragon fruits": "dragon fruit",
+        "custard apples": "custard apple",
+        "breadfruits": "breadfruit",
+        "jackfruits": "jackfruit",
+        "starfruits": "star fruit",
+        "star fruits": "star fruit",
+        "feijoas": "feijoa",
+        "kiwifruits": "kiwifruit",
+        "kiwi fruits": "kiwifruit",
+        "persimmons": "persimmon",
+        "figs": "fig",
+        "quinces": "quince",
+        "tamarillos": "tamarillo",
+        "loquats": "loquat",
+        "kumquats": "kumquat",
+        "pomegranates": "pomegranate",
+        "nashis": "nashi",
+        "rollinias": "rollinia",
+        "blackberries": "blackberry",
+        "raspberries": "raspberry",
+        "loganberries": "loganberry",
+        "boysenberries": "boysenberry",
+        "youngberries": "youngberry",
+        "blueberries": "blueberry",
+        "dates": "date",
+        "olives": "olive",
+        "coffee cherries": "coffee cherry",
+        "coffee beans": "coffee cherry",  # Common term for coffee fruit
+        
+        # Vegetables
+        "eggplants": "eggplant",
+        "aubergines": "eggplant",
+        "pepinos": "pepino",
+        
+        # Common variations
+        "table grapes": "grape",
+        "wine grapes": "grape",
+        "seedless grapes": "grape",
+        "red grapes": "grape",
+        "white grapes": "grape",
+        "green grapes": "grape",
+        "black grapes": "grape",
+        "sweet oranges": "sweet orange",
+        "navel oranges": "sweet orange",
+        "valencia oranges": "sweet orange",
+        "blood oranges": "sweet orange",
+        "mandarins": "mandarin",
+        "tangerines": "mandarin",
+        "clementines": "mandarin",
+        "satsumas": "mandarin",
+        "grapefruits": "grapefruit",
+        "pink grapefruits": "grapefruit",
+        "white grapefruits": "grapefruit",
+        "red grapefruits": "grapefruit",
+        "pomelos": "pummelo",
+        "pummelos": "pummelo",
+        "tangelos": "tangelo",
+        "citrons": "citron",
+        "meyer lemons": "meyer lemon",
+        "rangpur limes": "rangpur lime",
+        "tahitian limes": "tahitian lime",
+        "seville oranges": "seville orange",
+        "desert limes": "desert lime",
+        "japanese plums": "japanese plum",
+        "sour cherries": "sour cherry",
+        "plumcots": "plumcot",
+        "peacharines": "peacharine",
+        "black sapotes": "black sapote",
+        "white sapotes": "white sapote",
+        "star apples": "star apple",
+        "rose apples": "rose apple",
+        "mountain apples": "mountain apple",
+        "wax apples": "wax apple",
+        "spanish cherries": "spanish cherry",
+        "madagascar olives": "madagascar olive",
+        "bourbon oranges": "bourbon orange",
+        "mamey sapotes": "mamey sapote",
+        "surinam cherries": "surinam cherry",
+        "grumichamas": "grumichama",
+        "jaboticabas": "jaboticaba",
+        "monsteras": "monstera",
+        "mulberries": "mulberry",
+        "mock oranges": "mock orange",
+        "granadillas": "granadilla",
+        "cape gooseberries": "cape gooseberry",
+        "abius": "abiu",
+        "durians": "durian",
+        "mangosteens": "mangosteen",
+        "walnuts": "walnut",
+        "aceroas": "acerola",
+        "crab apples": "crab apple",
+        "sapodillas": "sapodilla",
+        "japanese persimmons": "japanese persimmon",
+        "tropical almonds": "tropical almond",
+        "chebulic myrobalans": "chebulic myrobalan",
+        "cacaos": "cacao",
+        "cashew apples": "cashew apple",
+        "cherimoyas": "cherimoya",
+        "pond apples": "pond apple",
+        "soursops": "soursop",
+        "akee apples": "akee apple",
+        "babacos": "babaco",
+        "natal plums": "natal plum",
+        "hawthorns": "hawthorn",
+        "excelsa coffees": "excelsa coffee",
+        "liberian coffees": "liberian coffee",
+        "robusta coffees": "robusta coffee",
+        "lilly pillies": "lilly pilly",
+        "jerusalem cherries": "jerusalem cherry",
+        "jew plums": "jew plum",
+        "jambus": "jambu",
+        "tahitian limes": "tahitian lime",
+        "rangpur limes": "rangpur lime",
+        "meyer lemons": "meyer lemon",
+        "seville oranges": "seville orange",
+        "desert limes": "desert lime",
+        "pummelos": "pummelo",
+        "tahitian limes": "tahitian lime",
+        "citrons": "citron",
+        "meyer lemons": "meyer lemon",
+        "grapefruits": "grapefruit",
+        "mandarins": "mandarin",
+        "rangpur limes": "rangpur lime",
+        "sweet oranges": "sweet orange",
+        "tangelos": "tangelo",
+        "coffee cherries": "coffee cherry",
+        "excelsa coffees": "excelsa coffee",
+        "liberian coffees": "liberian coffee",
+        "robusta coffees": "robusta coffee",
+        "hawthorns": "hawthorn",
+        "quinces": "quince",
+        "tamarillos": "tamarillo",
+        "persimmons": "persimmon",
+        "black sapotes": "black sapote",
+        "japanese persimmons": "japanese persimmon",
+        "durians": "durian",
+        "loquats": "loquat",
+        "grumichamas": "grumichama",
+        "surinam cherries": "surinam cherry",
+        "longans": "longan",
+        "figs": "fig",
+        "kumquats": "kumquat",
+        "strawberries": "strawberry",
+        "mangosteens": "mangosteen",
+        "dragonfruits": "dragon fruit",
+        "dragon fruits": "dragon fruit",
+        "walnuts": "walnut",
+        "lychees": "lychee",
+        "aceroas": "acerola",
+        "apples": "apple",
+        "crab apples": "crab apple",
+        "mangoes": "mango",
+        "mangos": "mango",
+        "sapodillas": "sapodilla",
+        "spanish cherries": "spanish cherry",
+        "monsteras": "monstera",
+        "mulberries": "mulberry",
+        "mock oranges": "mock orange",
+        "bananas": "banana",
+        "jaboticabas": "jaboticaba",
+        "rambutans": "rambutan",
+        "madagascar olives": "madagascar olive",
+        "bourbon oranges": "bourbon orange",
+        "olives": "olive",
+        "prickly pears": "prickly pear",
+        "passionfruits": "passionfruit",
+        "granadillas": "granadilla",
+        "avocados": "avocado",
+        "dates": "date",
+        "cape gooseberries": "cape gooseberry",
+        "mamey sapotes": "mamey sapote",
+        "almonds": "almond",
+        "apricots": "apricot",
+        "sweet cherries": "sweet cherry",
+        "sour cherries": "sour cherry",
+        "plums": "plum",
+        "plumcots": "plumcot",
+        "peaches": "peach",
+        "nectarines": "nectarine",
+        "peacharines": "peacharine",
+        "guavas": "guava",
+        "pomegranates": "pomegranate",
+        "nashis": "nashi",
+        "pears": "pear",
+        "rollinias": "rollinia",
+        "blackberries": "blackberry",
+        "raspberries": "raspberry",
+        "loganberries": "loganberry",
+        "boysenberries": "boysenberry",
+        "youngberries": "youngberry",
+        "tomatoes": "tomato",
+        "eggplants": "eggplant",
+        "pepinos": "pepino",
+        "jerusalem cherries": "jerusalem cherry",
+        "jew plums": "jew plum",
+        "mombins": "mombin",
+        "jambus": "jambu",
+        "rose apples": "rose apple",
+        "mountain apples": "mountain apple",
+        "wax apples": "wax apple",
+        "lilly pillies": "lilly pilly",
+        "tropical almonds": "tropical almond",
+        "chebulic myrobalans": "chebulic myrobalan",
+        "cacaos": "cacao",
+        "blueberries": "blueberry",
+        "grapes": "grape"
+    }
+    
+    # Check if the name is in our plural mapping
+    if name in plural_to_singular:
+        return plural_to_singular[name]
+    
+    # If not found, return the original name (might already be singular)
+    return name
 
-def format_pest_info(pest_codes: Set[str], origin_state: Optional[str] = None) -> str:
+def fruit_fly_assessment(query: str, origin_state: Optional[str] = None) -> str:
     """
-    Format pest information into a readable string, including state-specific details.
-    This helps provide context about which pests are relevant based on origin.
-    """
-    if not pest_codes:
-        return ""
-    
-    parts = []
-    for code in pest_codes:
-        pest = commodity_db.get_pest_info(code)
-        if pest:
-            pest_info = f"{code} ({pest.name})"
-            if origin_state and origin_state in pest.present_in:
-                pest_info += f" - Present in {origin_state}"
-            parts.append(pest_info)
-    
-    return "Pests: " + ", ".join(parts) if parts else ""
-
-def format_phylloxera_info(phylloxera_info):
-    """
-    Format phylloxera zone requirements into a readable string.
-    This is crucial for plant material as phylloxera zones affect import conditions.
-    """
-    if not phylloxera_info:
-        return ""
-    
-    parts = []
-    if phylloxera_info.pez_requirements:
-        parts.append(f"PEZ requirements: {phylloxera_info.pez_requirements}")
-    if phylloxera_info.prz_requirements:
-        parts.append(f"PRZ requirements: {phylloxera_info.prz_requirements}")
-    if phylloxera_info.piz_requirements:
-        parts.append(f"PIZ requirements: {phylloxera_info.piz_requirements}")
-    
-    return "\n".join(parts) if parts else ""
-
-def format_ir_info(ir_number):
-    """
-    Format Import Requirement (IR) information including applicable ICAs.
-    This provides structured information about specific import conditions.
-    """
-    ir_info = commodity_db.get_ir_info(ir_number)
-    if not ir_info:
-        return f"IR {ir_number}"
-    
-    parts = [f"IR {ir_number}: {ir_info.title}"]
-    
-    if ir_info.is_revoked:
-        parts.append("(REVOKED)")
-    elif ir_info.applicable_icas:
-        ica_parts = []
-        for ica in ir_info.applicable_icas:
-            if ica.status == "Accepted":
-                ica_parts.append(f"{ica.number}: {ica.title}")
-        if ica_parts:
-            parts.append("Applicable ICAs:")
-            parts.extend(f"- {ica}" for ica in ica_parts)
-    
-    return "\n".join(parts)
-
-def tas_manual_lookup(query: str, origin_state: Optional[str] = None) -> str:
-    """
-    Main lookup function that combines structured data with semantic search.
+    Main assessment function for fruit fly conditions.
     
     The process is:
-    1. First try to find exact match in structured commodity database
-    2. If found, use that to construct a precise query for the manual
-    3. Otherwise fall back to semantic search
-    
-    This two-step approach ensures:
-    - Accurate matching of known commodities
-    - Graceful fallback for unknown or ambiguous terms
-    - Context-aware responses based on origin state
+    1. Identify the commodity from the query
+    2. Check if it's a fruit fly host
+    3. Check if the origin state has the relevant fruit fly
+    4. Provide appropriate ICA conditions
     
     Args:
-        query: The commodity to look up
-        origin_state: Optional state of origin (e.g., "NSW", "VIC")
+        query: The commodity to assess (e.g., "table grapes", "apples") or "commodity, state" format
+        origin_state: Optional state of origin (e.g., "NSW", "VIC", "WA")
     """
-    q = query.lower().strip()
+    # Handle the case where the agent passes "commodity, state" as a single string
+    if "," in query and not origin_state:
+        parts = query.split(",", 1)
+        if len(parts) == 2:
+            commodity_name = parts[0].strip()
+            origin_state = parts[1].strip()
+        else:
+            return "ERROR: Invalid input format. Expected 'commodity, state' or separate parameters."
+    else:
+        commodity_name = query
+    
+    if not origin_state:
+        return "ERROR: Origin state is required for fruit fly assessment. Please specify the state of origin."
+    
+    # Clean up and normalize the commodity name (handle plurals)
+    commodity_name = _normalize_commodity_name(commodity_name)
     
     # Try exact match first
-    commodity = commodity_db.lookup(q)
-    if commodity:
-        # Construct precise query based on structured data
-        query_parts = [f"Import Requirements for {commodity.name}"]
-        
-        # Add origin state if provided
-        if origin_state:
-            query_parts.append(f"from {origin_state}")
-            
-            # Add state-specific pest information
-            state_pests = commodity_db.get_pests_by_state(origin_state)
-            if state_pests:
-                pest_codes = {pest.code for pest in state_pests}
-                query_parts.append(format_pest_info(pest_codes, origin_state))
-        
-        # Add commodity type context
-        if commodity.commodity_type == CommodityType.FRUIT:
-            query_parts.append("(Fruit)")
-            if origin_state:
-                fruit_flies = commodity_db.get_fruit_flies_by_state(origin_state)
-                if fruit_flies:
-                    query_parts.append("Fruit Fly Host")
-                    for fly in fruit_flies:
-                        if fly.code == "QFF" and commodity.qff_host:
-                            query_parts.append("QFF host")
-                        elif fly.code == "MFF" and commodity.mff_host:
-                            query_parts.append("MFF host")
-        elif commodity.commodity_type == CommodityType.PLANT:
-            query_parts.append("(Plant/Nursery Stock)")
-            if origin_state:
-                phylloxera = commodity_db.get_phylloxera_by_state(origin_state)
-                if phylloxera and commodity.phylloxera_info:
-                    query_parts.append("Phylloxera Requirements:\n" + format_phylloxera_info(commodity.phylloxera_info))
-        elif commodity.commodity_type == CommodityType.SEED:
-            query_parts.append("(Seed)")
-        elif commodity.commodity_type == CommodityType.GRAIN:
-            query_parts.append("(Grain)")
-        elif commodity.commodity_type == CommodityType.EQUIPMENT:
-            query_parts.append("(Equipment/Machinery)")
-        
-        if commodity.ir_numbers:
-            ir_details = [format_ir_info(ir) for ir in commodity.ir_numbers]
-            query_parts.append("IRs:\n" + "\n".join(f"- {ir}" for ir in ir_details))
-        
-        if commodity.pests:
-            query_parts.append(format_pest_info(commodity.pests, origin_state))
-        
-        if commodity.restricted_entry:
-            query_parts.append("Restricted Entry")
-        
-        # Add specific request for section and page numbers
-        q = "Refer only to the Tasmanian PQM. Include specific section numbers and page numbers for each requirement. " + " | ".join(query_parts)
-    else:
-        # Try fuzzy search
-        matches = commodity_db.search(q)
+    commodity = fruit_fly_db.get_commodity_info(commodity_name)
+    if not commodity:
+        # Try search
+        matches = fruit_fly_db.search_commodities(commodity_name)
         if matches:
-            # Use the first match to construct query
             commodity = matches[0]
-            q = f"Refer only to the Tasmanian PQM. Include specific section numbers and page numbers. Import Requirements for {commodity.name}"
-            if origin_state:
-                q += f" from {origin_state}"
         else:
-            q = f"Refer only to the Tasmanian PQM. Include specific section numbers and page numbers. {q}"
-
-    # Use the RetrievalQA chain to get an answer
-    result = qa_chain_tas.invoke({"query": q})
-    answer = result["result"]
+            return f"ERROR: Commodity '{commodity_name}' not found in fruit fly host database."
     
-    # Add source document information if available
-    if "source_documents" in result and result["source_documents"]:
-        sources = []
-        for doc in result["source_documents"]:
-            if hasattr(doc.metadata, "page") and hasattr(doc.metadata, "source"):
-                sources.append(f"Page {doc.metadata.page} in {doc.metadata.source}")
-        if sources:
-            answer += "\n\nSources: " + "; ".join(sources)
+    # Assess fruit fly risk
+    risk_assessment = fruit_fly_db.assess_fruit_fly_risk(commodity.name, origin_state)
     
-    return answer
+    if "error" in risk_assessment:
+        return risk_assessment["error"]
+    
+    # Build response
+    response_parts = []
+    response_parts.append(f"**Commodity**: {commodity.name}")
+    response_parts.append(f"**Origin State**: {origin_state}")
+    response_parts.append(f"**Destination**: Tasmania")
+    response_parts.append("")
+    
+    # Fruit fly host status
+    if commodity.is_fruit_fly_host:
+        response_parts.append("**Fruit Fly Host Status**:")
+        if commodity.qff_host:
+            response_parts.append(f"• Queensland Fruit Fly (QFF) host: YES")
+        if commodity.mff_host:
+            response_parts.append(f"• Mediterranean Fruit Fly (MFF) host: YES")
+        response_parts.append("")
+    else:
+        response_parts.append("**Fruit Fly Host Status**: NOT a fruit fly host")
+        response_parts.append("")
+    
+    # Risk assessment
+    if risk_assessment["qff_risk"] or risk_assessment["mff_risk"]:
+        response_parts.append("**⚠️ FRUIT FLY RISK DETECTED**:")
+        for detail in risk_assessment["risk_details"]:
+            response_parts.append(f"• {detail}")
+        response_parts.append("")
+        
+        # ICA conditions for fruit fly hosts
+        response_parts.append("**Required ICA Conditions**:")
+        if risk_assessment["qff_risk"]:
+            response_parts.append("• **ICA-1**: Queensland Fruit Fly Hosts")
+            response_parts.append("  - Must be treated with approved treatment")
+            response_parts.append("  - Must have valid phytosanitary certificate")
+            response_parts.append("  - Must be free from fruit fly")
+        if risk_assessment["mff_risk"]:
+            response_parts.append("• **ICA-2**: Mediterranean Fruit Fly Hosts")
+            response_parts.append("  - Must be treated with approved treatment")
+            response_parts.append("  - Must have valid phytosanitary certificate")
+            response_parts.append("  - Must be free from fruit fly")
+        response_parts.append("")
+        
+        response_parts.append("**Treatment Requirements**:")
+        response_parts.append("• Cold treatment: 1°C for 14 days")
+        response_parts.append("• Heat treatment: 47°C for 20 minutes")
+        response_parts.append("• Fumigation: Methyl bromide or phosphine")
+        response_parts.append("")
+        
+        response_parts.append("**Documentation Required**:")
+        response_parts.append("• Phytosanitary certificate with treatment details")
+        response_parts.append("• Treatment certificate")
+        response_parts.append("• Notice of Intention (NOI) 24h before arrival")
+        response_parts.append("")
+        
+    else:
+        response_parts.append("**✅ NO FRUIT FLY RISK**:")
+        response_parts.append("• No fruit fly hosts present in origin state")
+        response_parts.append("• No specific ICA conditions required for fruit fly")
+        response_parts.append("")
+        
+        if commodity.is_fruit_fly_host:
+            response_parts.append("**Note**: While this commodity is a fruit fly host, the relevant fruit fly is not present in the origin state.")
+        response_parts.append("")
+    
+    # Generic footer
+    response_parts.append("⚠️  **Pre-entry Requirements**:")
+    response_parts.append("• Lodge a *Notice of Intention (NoI) to Import* with Biosecurity Tasmania at least **24 h before the consignment arrives**")
+    response_parts.append("• Attach required phytosanitary certificates")
+    response_parts.append("• Ensure all treatment requirements are met")
+    
+    return "\n".join(response_parts)
 
 # Expose as LangChain tool for use in the agent
-# This tool can be used by the agent to look up import requirements
-# The agent will use this tool when it needs to consult the PQM
-tas_manual_tool = Tool(
-    name="tas_manual_lookup",
-    func=tas_manual_lookup,
+fruit_fly_tool = Tool(
+    name="fruit_fly_assessment",
+    func=fruit_fly_assessment,
     description=(
-        "Consult the Tasmanian Plant Quarantine Manual (PQM). "
-        "Input = commodity name (e.g. 'potato', 'cut flowers'). "
-        "Specify if it's a plant, fruit, seed, or equipment. "
-        "Optionally specify origin state (e.g., 'NSW', 'VIC')."
+        "Assess fruit fly conditions for importing commodities into Tasmania. "
+        "Input = commodity name (e.g. 'table grapes', 'apples') or 'commodity, state' format. "
+        "Specify origin state (e.g., 'NSW', 'VIC', 'WA'). "
+        "Returns ICA conditions and treatment requirements."
     )
 )

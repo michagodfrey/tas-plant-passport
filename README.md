@@ -11,15 +11,42 @@ This micro-repo is a **regulatory assistant** that provides structured, accurate
 
 ## Core Components
 
-| Path                            | Purpose                                                                                                                                                                       |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pdfs/tas_pqm.pdf`              | Tasmanian Plant Quarantine Manual - 2024 ed. The authoritative source of import requirements. Download at https://nre.tas.gov.au/biosecurity-tasmania/plant-biosecurity/plant-biosecurity-manual                                                                                |
-| `tas_index.py`                  | Creates a searchable index of the PQM by:<br>• Splitting the PDF into 800-token chunks<br>• Generating embeddings with OpenAI<br>• Storing in a FAISS vector database         |
-| `tas_data.py`                   | Manages structured data about:<br>• Commodities and their types<br>• Pest presence by state<br>• Import Requirements (IRs)<br>• ICA equivalents<br>• Phylloxera zones         |
-| `tas_tools.py`                  | Provides the `tas_manual_lookup` tool that:<br>• Combines structured data with semantic search<br>• Formats responses with citations<br>• Handles state-specific requirements |
-| `agent_setup_tas.py`            | Configures the LangChain agent with:<br>• Zero-shot reasoning capabilities<br>• Structured response formatting<br>• Consistent pre-entry reminders                            |
-| `data/table2.json` _(optional)_ | Machine-readable copy of PQM Table 2 (commodity <-> IR cross-index) for faster lookups.                                                                                       |
-| `.env`                          | Stores `OPENAI_API_KEY=sk-...` (never commit this).                                                                                                                           |
+| Path                            | Purpose                                                                                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pdfs/tas_pqm.pdf`              | Tasmanian Plant Quarantine Manual - 2024 ed. The authoritative source of import requirements. Download at https://nre.tas.gov.au/biosecurity-tasmania/plant-biosecurity/plant-biosecurity-manual |
+| `tas_index.py`                  | Creates a searchable index of the PQM by:<br>• Splitting the PDF into 800-token chunks<br>• Generating embeddings with OpenAI<br>• Storing in a FAISS vector database                            |
+| `tas_data.py`                   | Manages structured data about:<br>• Commodities and their types<br>• Pest presence by state<br>• Import Requirements (IRs)<br>• ICA equivalents<br>• Phylloxera zones                            |
+| `tas_tools.py`                  | Provides the `tas_manual_lookup` tool that:<br>• Combines structured data with semantic search<br>• Formats responses with citations<br>• Handles state-specific requirements                    |
+| `agent_setup_tas.py`            | Configures the LangChain agent with:<br>• Zero-shot reasoning capabilities<br>• Structured response formatting<br>• Consistent pre-entry reminders                                               |
+| `data/table2.json` _(optional)_ | Machine-readable copy of PQM Table 2 (commodity <-> IR cross-index) for faster lookups.                                                                                                          |
+| `.env`                          | Stores API keys (never commit this).                                                                                                                                                             |
+
+## API Configuration
+
+This project uses a **hybrid approach**:
+
+- **OpenAI API**: Used for embeddings (vector search) - Gemini doesn't provide embeddings
+- **Google AI API**: Used for text generation (Gemini Pro model)
+
+### Required API Keys
+
+1. **OpenAI API Key** (for embeddings):
+
+   - Get from: https://platform.openai.com/api-keys
+   - Used only for creating and searching the vector database
+
+2. **Google AI API Key** (for text generation):
+   - Get from: https://makersuite.google.com/app/apikey
+   - Used for the main LLM responses
+
+### Environment Setup
+
+Create a `.env` file with:
+
+```
+OPENAI_API_KEY=sk-...  # For embeddings only
+GOOGLE_API_KEY=...      # For text generation
+```
 
 ## How It Works
 
@@ -66,8 +93,9 @@ source .venv/bin/activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Add your OpenAI API key
+# 4. Add your API keys
 echo "OPENAI_API_KEY=sk-..." > .env
+echo "GOOGLE_API_KEY=..." >> .env
 
 # 5. Build the search index (one-time)
 python tas_index.py
@@ -92,6 +120,7 @@ python agent_setup_tas.py
 - Some complex requirements may require manual verification
 - Area freedom logic is not fully implemented
 - Response formatting is fixed to ensure consistency
+- Requires both OpenAI and Google AI API keys (hybrid approach)
 
 ## Future Enhancements
 

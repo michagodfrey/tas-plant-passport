@@ -5,3 +5,4 @@ __pycache__/
 mnt/data/
 tas_faiss_index/
 pdfs/
+docs/
